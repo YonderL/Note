@@ -139,4 +139,4 @@ target_link_libraries(msg_listener
 </launch>
 ```
 ### 实现结果
-![实现结果](/home/aliang/Note/pic/4.png)
+![实现结果](pic/4.png)
