@@ -115,5 +115,50 @@ $$
 $$
 
 选取径向基核函数为$f(r)=r^2ln(r+1)$
-### 基于Eigen库的实现
+### 基于`Eigen`库的实现
+```C++
+#include <Eigen/Eigen>
+#include <Eigen/Dense>
+#include <Eigen/Geometry>
+#include <Eigen/Eigenvalues>
+#include <iostream>
+#include <cmath>
 
+int main(int argc, char *argv[]){
+    // here is an arbitrary normal vector
+// initialized to (1,2,3) upon instantiation
+    int num = 6;
+    Eigen::MatrixXd p_x(1, num);
+    Eigen::MatrixXd dis_x(num, num);
+    Eigen::MatrixXd p_y(1, num);
+    Eigen::MatrixXd dis_y(num, num);
+    Eigen::MatrixXd dis_sqr(num, num);
+    Eigen::MatrixXd dis_r(num, num);
+    Eigen::MatrixXd w(num, 1);
+    p_x << 1.5, 1.5, -0.75, -3, -0.75, 1.5;
+    p_y << 0, 2.6, 1.3, 0, -1.3, -2.6;
+    Eigen::MatrixXd mat_x = p_x.replicate(num, 1); 
+    // 该函数将p_x作为一个矩阵元素，填充出n*m的矩阵
+    Eigen::MatrixXd mat_y = p_y.replicate(num, 1);
+    mat_x = mat_x - p_x.transpose().replicate(1, num);
+    mat_y = mat_y - p_y.transpose().replicate(1, num);
+    dis_x = mat_x.cwiseProduct(mat_x); //对应位置相乘
+    dis_y = mat_y.cwiseProduct(mat_y);
+    dis_sqr = dis_x + dis_y;
+    dis_r = dis_sqr.unaryExpr([](double x){return std::sqrt(x);});
+    std::cout << "矩阵：\n" << dis_r << std::endl;
+    dis_r = dis_r.unaryExpr([](double x){return x*x*log(x+1);});
+    dis_r = dis_r.inverse();
+    w = dis_r.rowwise().sum();
+    std::cout << "矩阵：\n" << w << std::endl;
+    return 0;
+}
+```
+与`Matlab`计算结果相同
+
+    w=-0.0475269
+       0.0351389
+      -0.0475205
+       0.0351453
+      -0.0475205
+       0.0351389
