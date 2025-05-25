@@ -125,8 +125,6 @@ $$
 #include <cmath>
 
 int main(int argc, char *argv[]){
-    // here is an arbitrary normal vector
-// initialized to (1,2,3) upon instantiation
     int num = 6;
     Eigen::MatrixXd p_x(1, num);
     Eigen::MatrixXd dis_x(num, num);
