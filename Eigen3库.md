@@ -160,3 +160,12 @@ int main(int argc, char *argv[]){
        0.0351453
       -0.0475205
        0.0351389
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  tex2jax: {inlineMath: [ ['$', '$'] ],
+        displayMath: [ ['$$', '$$']]}
+});
+</script>
+
+<script type="text/javascript" src="https://cdn.bootcss.com/mathjax/2.7.2/MathJax.js?config=default"></script>
