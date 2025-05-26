@@ -143,4 +143,4 @@ int main(int argc, char *argv[]){
 
 ## 结果示例
 左侧为Rviz可视化，右侧为matlab的结果，可以看到二者基本相同
-![可视化](8.png)
+![可视化](pic/8.png)
