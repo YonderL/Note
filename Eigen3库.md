@@ -1,22 +1,4 @@
-<head>
-    <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
-    <script type="text/x-mathjax-config">
-        MathJax.Hub.Config({
-            tex2jax: {
-            skipTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
-            inlineMath: [['$','$']]
-            }
-        });
-    </script>
-</head>
-
-</script>
-<script
-  type="text/javascript"
-  async
-  src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-MML-AM_CHTML"
-></script>
-
+### 公式无法在github网页正常显示，查看[html文件](Eigen3库.html)
 # `Eigen`库
 
 矩阵运算是一种非常重要的运算方式，在`Matlab`中，矩阵运算可以轻松的实现，但在`C++`这种偏底层的语言中，若不借助第三方库，矩阵运算需要我们进行较为复杂的代码设计。`Eigen`库是一个用于线性运算的`C++`模板库，它支持矩阵运算、矢量运算、数值分析以及相关的算法，安装`Eigen`库可以大大提高我们的开发效率。
