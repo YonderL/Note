@@ -1,4 +1,4 @@
-# URDF机器人仿真建模
+# URDF机器人与Xacro仿真建模(Rviz下的使用)
 
 ## 为什么我们需要机器人仿真？
 - `低成本`:当前机器人成本居高不下，动辄几十万，仿真可以大大降低成本，减小风险
@@ -220,6 +220,7 @@ URDF的本质是`xml`语法，`xml`的特点在于标签的分级和首尾要求
 </launch>
 ```
 通过joint_state_publisher_gui的UI我们可以测试关节的旋转角度\
+X轴为红色，Y轴为绿色，Z轴为蓝色
 如下图：
 ![关节连接示例](pic/9.png)
 #### 底盘问题
@@ -346,3 +347,296 @@ URDF的本质是`xml`语法，`xml`的特点在于标签的分级和首尾要求
 ```
 重新尝试，问题解决。
 
+## 两轮差速运动小车URDF建模
+需求：创建一个四轮圆柱状机器人模型，机器人参数如下,底盘为圆柱状，半径 10cm，高 8cm，四轮由两个驱动轮和两个万向支撑轮组成，两个驱动轮半径为 3.25cm,轮胎宽度1.5cm，两个万向轮为球状，半径 0.75cm，底盘离地间距为 1.5cm(与万向轮直径一致)
+
+```xml
+<robot name="diffcar">
+    <link name="base_footlink">
+        <visual>
+            <geometry>
+                <sphere radius="0.001" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="yellow">
+                <color rgba="0.8 0.3 0.1 0.5" />
+            </material>   
+        </visual>
+    </link>
+
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <cylinder radius="0.1" length="0.08" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+        </visual>
+    </link>
+
+    <link name="left_wheel">
+        <visual>
+            <geometry>
+                <cylinder radius="0.0325" length="0.015" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="black">
+                <color rgba="0.7 0.5 0 0.5" />
+            </material>
+        </visual>
+    </link>
+    
+    <link name="right_wheel">
+        <visual>
+            <geometry>
+                <cylinder radius="0.0325" length="0.015" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="black">
+                <color rgba="0.7 0.5 0 0.5" />
+            </material>
+        </visual>
+    </link>
+
+    <link name="forward_wheel">
+        <visual>
+            <geometry>
+                <sphere radius="0.0075"  />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+        </visual>
+    </link>
+
+    <link name="back_wheel">
+        <visual>
+            <geometry>
+                <sphere radius="0.0075"  />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+        </visual>
+    </link>
+
+    <joint name="base_link2base_footlink" type="fixed">
+        <parent link="base_footlink" />
+        <child link="base_link" />
+        <origin xyz="0 0 0.015" rpy="0 0 0" />
+    </joint>
+
+    <joint name="left_wheel2base_link" type="continous">
+        <parent link="base_link" />
+        <child link="left_wheel" />
+        <origin xyz="0 -0.1075 -0.0225" rpy="1.57 0 0" />
+        <axis xyz="0 0 1" />
+    </joint>
+
+    <joint name="right_wheel2base_link" type="continous">
+        <parent link="base_link" />
+        <child link="right_wheel" />
+        <origin xyz="0 0.1075 -0.0225" rpy="-1.57 0 0" />
+        <axis xyz="0 0 1" />
+    </joint>
+
+    <joint name="forward_wheel2base_link" type="continous">
+        <parent link="base_link" />
+        <child link="forward_wheel" />
+        <origin xyz="0.0925 0 -0.0475" rpy="0 0 0" />
+        <axis xyz="1 1 1" />
+    </joint>
+
+    <joint name="back_wheel2base_link" type="continous">
+        <parent link="base_link" />
+        <child link="back_wheel" />
+        <origin xyz="-0.0925 0 -0.0475" rpy="0 0 0" />
+        <axis xyz="1 1 1" />
+    </joint>
+
+</robot>
+```
+
+## URDF仿真建模的缺点
+1. 使用URDF仿真一方面需要对每一个部分进行实例化，即使是物理属属性完全相同的的，例如我们上面的例子中的两个驱动轮和两个万向轮
+2. 在设计关节的位置时，需要按照一定的公式计算，公式是固定的，但是在 URDF 中依赖于人工计算，存在不便，容易计算失误，且当某些参数发生改变时，还需要重新计算。
+
+## Xacro
+### 什么是Xacro
+Xacro 是 XML Macros 的缩写，Xacro 是一种 XML 宏语言，是可编程的 XML。Xacro 可以声明变量，可以通过数学运算求解，使用流程控制控制执行顺序，还可以通过类似函数的实现，封装固定的逻辑，将逻辑中需要的可变的数据以参数的方式暴露出去，从而提高代码复用率以及程序的安全性。\
+较之于纯粹的 URDF 实现，可以编写更安全、精简、易读性更强的机器人模型文件，且可以提高编写效率。
+### Xacro语法
+#### 属性与公式编写
+Xacro支持将数字封装为一个属性，类似于编程语言中的变量命名，利用该方式，我们无需对车轮的位置进行手动计算，只需要将基础参数设置好即可。
+使用方法：
+```xml
+# 定义属性
+    <xacro:property name="xxxx" value="yyyy" /> 
+# 属性调用
+    ${属性名称} 
+# 属性计算
+    ${数学表达式}
+```
+示例：
+```xml
+    <xacro:property name="qudong_wheel_r" value="0.1" /> 
+    <xacro:property name="qudong_wheel_l" value="0.08" /> 
+
+    <link name="left_wheel">
+        <visual>
+            <geometry>
+                <cylinder radius="${qudong_wheel_r}" length="${qudong_wheel_l}" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="black">
+                <color rgba="0.7 0.5 0 0.5" />
+            </material>
+        </visual>
+    </link>  
+```
+#### 宏
+类似于函数，将参数代入宏，可以快速建立link或joint，可以大大优化代码结构，提高代码安全性。
+```xml
+# 宏定义
+<xacro:macro name="宏名称" params="参数列表(多参数之间使用空格分隔)">
+
+    .....
+
+    参数调用格式: ${参数名}
+
+</xacro:macro>
+
+# 宏调用
+<xacro:宏名称 参数1=xxx 参数2=xxx/>
+```
+#### 文件包含
+机器人由多部件组成，不同部件可能封装为单独的xacro文件，最后再将不同的文件集成，组合为完整机器人，可以使用文件包含实现
+```xml
+<robot name="xxx" xmlns:xacro="http://wiki.ros.org/xacro">
+      <xacro:include filename="my_base.xacro" />
+      <xacro:include filename="my_camera.xacro" />
+      <xacro:include filename="my_laser.xacro" />
+      ....
+</robot>
+```
+#### 使用Xacro优化两轮差速小车底盘模型
+```xml
+<robot name="diff_base" xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <!-- 封装变量、常量 -->
+    <xacro:property name="PI" value="3.141" />
+    <xacro:property name="wheel_radius" value="0.0325" /> 
+    <xacro:property name="wheel_width" value="0.015" /> 
+    <xacro:property name="base_radius" value="0.1" /> 
+    <xacro:property name="base_linkheight" value="0.08" /> 
+    <xacro:property name="caster_radius" value="0.0075" /> 
+    <xacro:property name="base_height" value="0.015" /> 
+    <!-- 初始化基座 -->
+    <link name="base_footlink">
+        <visual>
+            <geometry>
+                <sphere radius="0.001" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="yellow">
+                <color rgba="0.8 0.3 0.1 0.5" />
+            </material>   
+        </visual>
+    </link>
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <cylinder radius="${base_radius}" length="${base_linkheight}" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+        </visual>
+    </link>
+    <joint name="base_link2base_footlink" type="fixed">
+        <parent link="base_footlink" />
+        <child link="base_link" />
+        <origin xyz="0 0 ${base_height}" rpy="0 0 0" />
+    </joint>
+    <!-- 驱动轮宏 -->
+    <xacro:macro name="add_wheels" params="name flag">
+        <link name="${name}_wheel">
+            <visual>
+                <geometry>
+                    <cylinder radius="${wheel_radius}" length="${wheel_width}" />
+                </geometry>
+                <origin xyz="0 0 0" rpy="0 0 0" />
+                <material name="black">
+                    <color rgba="0.7 0.5 0 0.5" />
+                </material>
+            </visual>
+        </link> 
+        <joint name="${name}_wheel2base_link" type="continuous">
+            <parent link="base_link" />
+            <child link="${name}_wheel" />
+            <origin xyz="0 ${flag*(base_radius + wheel_width/2)} ${wheel_radius - base_height - base_linkheight/2}" rpy="${flag*PI/2} 0 0" />
+            <axis xyz="0 0 1" />
+        </joint>
+    </xacro:macro>
+    <!-- 万向轮宏 -->
+    <xacro:macro name="add_casters" params="name flag">
+        <link name="${name}_caster">
+            <visual>
+                <geometry>
+                    <sphere radius="${caster_radius}"  />
+                </geometry>
+                <origin xyz="0 0 0" rpy="0 0 0" />
+            </visual>
+        </link> 
+        <joint name="${name}_caster2base_link" type="continuous">
+            <parent link="base_link" />
+            <child link="${name}_caster" />
+            <origin xyz="${flag*(base_radius-caster_radius)} 0 ${-caster_radius-base_linkheight/2}" rpy="0 0 0" />
+            <axis xyz="1 1 1" />
+        </joint>
+    </xacro:macro> 
+    <!-- 利用宏加入驱动轮和万向轮 -->
+    <xacro:add_wheels name="left" flag="1" />
+    <xacro:add_wheels name="right" flag="-1" />
+    <xacro:add_casters name="front" flag="1" />
+    <xacro:add_casters name="back" flag="-1" />
+</robot>
+```
+
+#### 如何使用Xacro
+我们可以将`Xacro`转为`urdf`后使用，但更推荐直接使用`Xacro`
+确保当前功能包已经导入了`xacro`功能包之后，在launch中使用如下指令展示：
+```xml
+<launch>
+    <!-- 设置参数 -->
+   <param name="robot_description" command="$(find xacro)/xacro $(find urdf_rviz)/urdf/xacro/diffcar.urdf.xacro" />
+
+    <!-- 启动 rviz -->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf_rviz)/config/rviz/show_mycar.rviz"/>
+    <!-- 添加关节状态发布节点 -->
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" />
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" />
+   
+</launch>
+
+```
+核心为：
+```xml
+<param name="robot_description" command="$(find xacro)/xacro $(find urdf_rviz)/urdf/xacro/diffcar.urdf.xacro" />
+```
+与urdf的展示代码对比：
+```xml
+<param name="robot_description" textfile="$(find urdf_rviz)/urdf/testone.urdf" />
+```
+`textfile`换为了`command`，且引号内多了寻找`xacro`功能包的部分
+
+#### 增加Xacro功能包(加入功能包的一般步骤)
+若没有包含`xacro`功能包\
+只需要在`package.xml`中加入
+```xml
+<build_depend>xacro</build_depend>
+<exec_depend>xacro</exec_depend>
+```
+在`CMakeLists.txt`中加入
+```txt
+find_package(catkin REQUIRED COMPONENTS
+  message_generation
+  roscpp
+  rospy
+  std_msgs
+  urdf
+  xacro ## 新增的包
+)
+```
