@@ -640,3 +640,5 @@ find_package(catkin REQUIRED COMPONENTS
   xacro ## 新增的包
 )
 ```
+#### 效果展示
+![效果展示](pic/14.png)
