@@ -635,6 +635,17 @@ launch后，运行以下bash文件，可以看到阿克曼小车绕圆运行
 rostopic pub /ackermann_base_final/left_steer_controller/command std_msgs/Float64 "data: 0.47"&rostopic pub /ackermann_base_final/right_steer_controller/command std_msgs/Float64 "data: 0.5"&rostopic pub /ackermann_base_final/left_rear_wheel_controller/command std_msgs/Float64 "data: 5"&rostopic pub /ackermann_base_final/right_rear_wheel_controller/command std_msgs/Float64 "data: 5"
 ```
 
+## Gazebo地图增加障碍物
+Gazebo左侧上方点击Insert即可开始对地图编辑，再点击地图上方的圆柱、正方体等增加圆柱、正方体等形状的障碍物，四个箭头的按键可以对障碍物位置进行移动。
+完成后，点击左上角File->save world as进行保存，在launch中增加以下代码，加载地图：
+```xml
+<include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find urdf_rviz)/worlds/test.world" />
+</include>
+```
+### 问题：SpawnModel: Failure - model name ackermann_base_final already exist
+这是因为world文件中包含机器人模型，加载世界时会将机器人模型再次加载，因此直接在world中将机器人模型部分直接删除即可。
+
 ## 传感器
 ### IMU
 `IMU`测量物体三轴姿态角(或角速率)以及加速度的装置，在机器人导航中有着很重要的应用。在`Gazebo`仿真中，我们可以直接将`imu`插件附加在`base_link`上。只需要在URDF中加入这段即可。
@@ -665,4 +676,124 @@ rostopic pub /ackermann_base_final/left_steer_controller/command std_msgs/Float6
 `rqt_plot`使用tips：
 1. 左上角第五个像放大镜的东西点击后，左键框选区域放大，右键缩小
 2. 若横轴或纵轴步距过长，可以通过左上角倒数第二个功能进行横坐标和纵坐标展现范围的改变
-### 激光雷达
+### 2D单线激光雷达
+激光雷达可以通过激光扫描的形式获取障碍物轮廓和位置，为了方便附加Gazebo节点，我们在小车上创建雷达link，并将其驾高。
+```xml
+<xacro:property name="lidar_m" value="0.2" />
+<xacro:property name="lidar_height" value="0.02" />  
+<xacro:property name="lidar_radius" value="0.02" /> 
+ <link name="lidar_base">
+    <xacro:cylinder_inertial_matrix m="0.01" r="0.005" h="0.04" />
+    <visual>
+        <origin xyz="0.0 0.0 0.0" rpy="0 0.0 0.0"/>
+        <geometry>
+            <cylinder radius="0.005" length="0.04"/>
+        </geometry>
+    </visual>
+    <collision>
+        <origin xyz="0.0 0.0 0.0" rpy="0 0.0 0.0"/>
+        <geometry>
+            <cylinder radius="${lidar_radius}" length="${lidar_height}"/>
+        </geometry>
+    </collision>
+</link>
+<link name="lidar">
+    <xacro:cylinder_inertial_matrix m="${lidar_m}" r="${lidar_radius}" h="${lidar_height}" />
+    <visual>
+        <origin xyz="0.0 0.0 0.0" rpy="0 0.0 0.0"/>
+        <geometry>
+            <cylinder radius="${lidar_radius}" length="${lidar_height}"/>
+        </geometry>
+    </visual>
+    <collision>
+        <origin xyz="0.0 0.0 0.0" rpy="0 0.0 0.0"/>
+        <geometry>
+            <cylinder radius="${lidar_radius}" length="${lidar_height}"/>
+        </geometry>
+    </collision>
+</link>
+<joint name="lidar_base2base_link" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_base"/>
+    <origin xyz="0.0 0.0 ${base_height/2+0.02}" rpy="0.0 0.0 0.0"/>
+</joint>
+<joint name="lidar2lidar_base" type="fixed">
+    <parent link="lidar_base"/>
+    <child link="lidar"/>
+    <origin xyz="0.0 0.0 ${lidar_height/2+0.02}" rpy="0.0 0.0 0.0"/>
+</joint>
+<gazebo reference="lidar_base">
+    <material>Gazebo/red</material>
+</gazebo>
+<gazebo reference="lidar">
+    <material>Gazebo/red</material>
+</gazebo>
+```
+
+之后附加Gazebo插件，如下：
+```xml
+<gazebo reference="lidar">
+    <sensor type="ray" name="rplidar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5.5</update_rate>
+        <ray>
+        <scan>
+            <horizontal>
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-3</min_angle>
+            <max_angle>3</max_angle>
+            </horizontal>
+        </scan>
+        <range>
+            <min>0.10</min>
+            <max>30.0</max>
+            <resolution>0.01</resolution>
+        </range>
+        <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+        </noise>
+        </ray>
+        <plugin name="gazebo_rplidar" filename="libgazebo_ros_laser.so">
+        <robotNamespace>ackermann_base_final</robotNamespace>
+        <topicName>/scan</topicName>
+        <frameName>lidar</frameName>
+        </plugin>
+    </sensor>
+</gazebo>
+```
+创建一个Launch文件同时启动Gazebo和Rviz
+```xml
+<launch>
+    <!-- 将 Urdf 文件的内容加载到参数服务器 -->
+    <param name="robot_description" command="$(find xacro)/xacro $(find urdf_rviz)/urdf/xacro/ackermann_base_final.xacro" />
+    <!-- 启动 gazebo -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find urdf_rviz)/worlds/test.world" />
+    </include>
+    <!-- 在 gazebo 中显示机器人模型 -->
+    <node pkg="gazebo_ros" type="spawn_model" name="model" args="-urdf -model ackermann_base_final -param robot_description"  />
+    <!-- 加载控制器参数 -->
+    <rosparam file="$(find urdf_rviz)/config/rviz/ackermann/ackermann_base_final.yaml" command="load"/>
+    <node name="controller_spawner" pkg="controller_manager" type="spawner" output="screen"
+        ns="/ackermann_base_final"
+        args="
+          joint_state_controller
+          left_steer_controller
+          right_steer_controller
+          left_rear_wheel_controller
+          right_rear_wheel_controller
+        " />
+    <!-- 启动 rviz -->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf_rviz)/config/rviz/show_mycar.rviz"/>
+    <!-- 添加关节状态发布节点 -->
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" />
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" />
+</launch>
+```
+在Rviz中add激光雷达信息，并设置其topic为/scan，显示为：
+![](pic/25.png)
+
