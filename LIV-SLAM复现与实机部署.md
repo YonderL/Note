@@ -1,10 +1,10 @@
-# LIV-SLAM复现与实机部署
+# LIV-SAM复现与实机部署
 
 ## 源码编译
-由于LIV-SLAM原仓库建设于Ubuntu18.04上，因此在Ubuntu20.04的ROS Noetic版本上编译可能会存在一些问题，以下为编译过程，包含一些问题与解决方案：
+由于LIV-SAM原仓库建设于Ubuntu18.04上，因此在Ubuntu20.04的ROS Noetic版本上编译可能会存在一些问题，以下为编译过程，包含一些问题与解决方案：
 
 ### 源码的选择
-由于LVI-SLAM的官方源码存在着传感器参数混乱、自身部署复杂等问题，因此官方在其github仓库下也提供了三个其他版本的源码，这里我们选择[Easyused版本](https://github.com/Cc19245/LVI-SAM-Easyused)
+由于LVI-SAM的官方源码存在着传感器参数混乱、自身部署复杂等问题，因此官方在其github仓库下也提供了三个其他版本的源码，这里我们选择[Easyused版本](https://github.com/Cc19245/LVI-SAM-Easyused)
 
 ### 编译过程
 ```bash
@@ -98,7 +98,7 @@ rosbag info <包名>
 可以查看bag包中发布的话题以及其数据格式
 LVI-SLAM需要的话题以及数据格式如下：
 ![](pic/21.png)
-值得注意的是，LVI-SLAM的点云数据需要ring和time，imu数据为9轴imu数据，图像数据官方为压缩的数据，但它在readme也提到了取消压缩的方法。
+值得注意的是，LVI-SAM的点云数据需要ring和time，imu数据为9轴imu数据，图像数据官方为压缩的数据，但它在readme也提到了取消压缩的方法。
 #### 运行bag包发布数据
 ```bash
 rosbag play <包名>
@@ -116,3 +116,107 @@ rosbag play <包名>
    - 平移矩阵可以测量
    - 旋转矩阵需要获取元件的官方资料，尤其是`imu`和激光雷达的三轴定义方向与安装方向
 4. 在电脑上进行调试，调试确认无问题后进行下一步的部署
+
+### 如何适配6轴imu？
+因为硬件问题，实机部署时，只能使用6轴的imu，而LVI-SAM中的激光雷达部分的LIO-SAM使用9轴imu，需要RPY角。经过搜索和查看，可以对代码的部分进行修改，实现对6轴imu的适配。
+具体修改部分：
+1. lidar_odometry/utility.h imuConverter函数修改：
+```cpp
+#if IF_OFFICIAL
+   Eigen::Quaterniond q_final = q_from * extQRPY;
+#else
+   Eigen::Quaterniond q_final = q_from * Q_quat_lidar;
+#endif  
+   imu_out.orientation.x = 0; //这里为修改部分
+   imu_out.orientation.y = 0; //这里为修改部分
+   imu_out.orientation.z = 0; //这里为修改部分
+   imu_out.orientation.w = 1; //这里为修改部分
+   // if (sqrt(q_final.x()*q_final.x() + q_final.y()*q_final.y() + q_final.z()*q_final.z() + q_final.w()*q_final.w()) < 0.1)
+   // {
+   //    ROS_INFO("Invalid quaternion, please use a 9-axis IMU!");
+   //    //ros::shutdown();
+   // }
+```
+```cpp
+nh.param<float>(PROJECT_NAME + "/imuRPYWeight", imuRPYWeight, 0); //这里数字改为0
+```
+2. lidar_odometry/mapOptmization.cpp publishOdometry函数修改：
+```cpp
+if (cloudInfo.imuAvailable == true)
+{
+      if (std::abs(cloudInfo.imuPitchInit) < 1.4)
+      {
+         double imuWeight = 0; //这里数字改为0
+         tf::Quaternion imuQuaternion;
+         tf::Quaternion transformQuaternion;
+         double rollMid, pitchMid, yawMid;
+
+         // slerp roll
+         transformQuaternion.setRPY(roll, 0, 0);
+         imuQuaternion.setRPY(cloudInfo.imuRollInit, 0, 0);
+         tf::Matrix3x3(transformQuaternion.slerp(imuQuaternion, imuWeight)).getRPY(rollMid, pitchMid, yawMid);
+         roll = rollMid;
+
+         // slerp pitch
+         transformQuaternion.setRPY(0, pitch, 0);
+         imuQuaternion.setRPY(0, cloudInfo.imuPitchInit, 0);
+         tf::Matrix3x3(transformQuaternion.slerp(imuQuaternion, imuWeight)).getRPY(rollMid, pitchMid, yawMid);
+         pitch = pitchMid;
+      }
+}
+```
+
+修改完毕后，将官方bag中的orientation数据全部改为0 0 0 0后，代码运行正常。
+bag包orientation数据修改程序：
+```cpp
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+#include <sensor_msgs/Imu.h>
+#include <iostream>
+
+int main(int argc, char** argv) {
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " input.bag output.bag" << std::endl;
+        return 1;
+    }
+
+    std::string input_bag = argv[1];
+    std::string output_bag = argv[2];
+
+    rosbag::Bag inbag(input_bag, rosbag::bagmode::Read);
+    rosbag::Bag outbag(output_bag, rosbag::bagmode::Write);
+
+    // 不加任何过滤，读取所有消息
+    rosbag::View view(inbag);
+
+    BOOST_FOREACH(rosbag::MessageInstance const& m, view) {
+        if (m.getTopic() == "/imu/data_raw") {
+            sensor_msgs::Imu::ConstPtr imu = m.instantiate<sensor_msgs::Imu>();
+            if (imu != nullptr) {
+                sensor_msgs::Imu modified_imu = *imu;
+                modified_imu.orientation.x = 0.0;
+                modified_imu.orientation.y = 0.0;
+                modified_imu.orientation.z = 0.0;
+                modified_imu.orientation.w = 0.0;
+
+                outbag.write(m.getTopic(), m.getTime(), modified_imu);
+            }
+        } else {
+            // 所有其他 topic 都直接写入
+            outbag.write(m.getTopic(), m.getTime(), m);
+        }
+    }
+
+    inbag.close();
+    outbag.close();
+
+    std::cout << "Modified bag saved to: " << output_bag << std::endl;
+    return 0;
+}
+```
+
+使用方法：
+```bash
+rosrun *** ***.cpp input.bag(输入的bag地址) output.bag(输出的bag地址)
+```
+
